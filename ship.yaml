@@ -7,7 +7,7 @@ assets:
         proxy: false
         strip_path: true
     - inline:
-        dest: ./base/secret.yaml
+        dest: ./overlays/secrets/secret.yaml
         when: '{{repl ConfigOptionEquals "secret_type" "unencrypted_secrets"}}'
         contents: |
           apiVersion: v1
@@ -22,7 +22,7 @@ assets:
             accessKeyId: '{{repl ConfigOption "secret_access_key" | Base64Encode }}'
 
     - inline:
-        dest: ./base/sealedsecret.yaml
+        dest: ./overlays/secrets/sealedsecret.yaml
         when: '{{repl ConfigOptionEquals "secret_type" "sealed_secrets"}}'
         contents: |
           ---
@@ -36,6 +36,17 @@ assets:
             encryptedData:
               accessKeyId: '{{repl KubeSeal (ConfigOption "sealed_secret_cert") (ConfigOption "namespace") "signalsciences" (ConfigOption "access_key_id") }}'
               secretAccessKey: '{{repl KubeSeal (ConfigOption "sealed_secret_cert") (ConfigOption "namespace") "signalsciences" (ConfigOption "secret_access_key") }}'
+
+    - inline:
+        dest: ./overlays/secrets/kustomization.yaml
+        when: '{{repl or (ConfigOptionEquals "secret_type" "unencrypted_secrets") (ConfigOptionEquals "secret_type" "sealed_secrets")}}'
+        contents: |
+          kind: "Kustomization"
+          apiversion: "kustomize.config.k8s.io/v1beta1"
+          bases:
+          - ../../base
+          resources:
+          - '{{repl if ConfigOptionEquals "secret_type" "sealed_secrets"}}sealedsecret.yaml{{repl else}}secret.yaml{{repl end}}'
 
 config:
   v1:
@@ -142,7 +153,7 @@ lifecycle:
 
     - kustomize:
         requires: ["render"]
-        base: base
+        base: '{{repl if (ConfigOptionEquals "secret_type" "no_secrets")}}base{{repl else}}overlays/secrets{{repl end}}'
         overlay: overlays/ship
         dest: signalsciences.yaml
 
